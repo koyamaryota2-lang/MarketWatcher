@@ -1,0 +1,42 @@
+name: Daily Market Watcher
+
+on:
+  schedule:
+    # JST 8:00 = UTC 23:00 (前日)
+    - cron: '0 23 * * *'
+  workflow_dispatch: {}  # 手動実行もできるように
+
+permissions:
+  contents: write
+
+jobs:
+  run-market-watcher:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Japanese fonts (for table images)
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run market watcher script
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python daily_market_watcher.py
+
+      - name: Commit CSV logs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add market_log.csv sector_log_jp.csv
+          git diff --staged --quiet || git commit -m "Update market logs $(date +'%Y-%m-%d')"
+          git push
