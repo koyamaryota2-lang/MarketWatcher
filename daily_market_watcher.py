@@ -537,6 +537,8 @@ def main():
     print("※値は各市場の直近取得済み終値です。24時間市場(ドル円/原油/銅)は直近24時間比、")
     print("  それ以外は前営業日比・5営業日比・1か月比・3か月比を表示します。")
 
+    os.makedirs(TABLE_IMAGE_DIR, exist_ok=True)
+
     macro_rows, macro_results = build_market_rows(MACRO_INSTRUMENTS)
     japan_index_rows, japan_index_results = build_market_rows(JAPAN_INDEX_INSTRUMENTS)
     us_index_rows, us_index_results = build_market_rows(US_INDEX_INSTRUMENTS)
@@ -559,14 +561,33 @@ def main():
     print(f"\n履歴を {MARKET_LOG_FILE} に保存しました。")
     print(f"履歴を {SECTOR_LOG_FILE} に保存しました。")
 
-    # Discordへテキスト表(画像なし)で送信
-    send_discord_text_tables(
+    # 画像テーブル生成してDiscordに送信
+    macro_image = render_table_image(
+        macro_rows, "マクロ指標",
+        os.path.join(TABLE_IMAGE_DIR, "macro.png"),
+        note="24時間市場(ドル円/原油/銅/ゴールド)は直近24時間比、それ以外は前営業日比。国債はETF価格(利回りと逆方向)",
+    )
+    japan_index_image = render_table_image(
+        japan_index_rows, "日本株指数",
+        os.path.join(TABLE_IMAGE_DIR, "japan_index.png"),
+        note="TOPIXは連動ETF(1306.T)の価格で代用",
+    )
+    us_index_image = render_table_image(
+        us_index_rows, "米国株指数",
+        os.path.join(TABLE_IMAGE_DIR, "us_index.png"),
+    )
+    sector_image = render_table_image(
+        sector_rows, "TOPIX-17 業種騰落率(前日比が大きい順)",
+        os.path.join(TABLE_IMAGE_DIR, "sector.png"),
+    )
+
+    send_discord_with_images(
         f"**デイリーマーケット概況 {today}**",
         [
-            ("マクロ指標", macro_rows, "24時間市場(ドル円/原油/銅/ゴールド)は直近24時間比、それ以外は前営業日比。国債はETF価格(利回りと逆方向)"),
-            ("日本株指数", japan_index_rows, "TOPIXは連動ETF(1306.T)の価格で代用"),
-            ("米国株指数", us_index_rows, None),
-            ("TOPIX-17 業種騰落率(前日比が大きい順)", sector_rows, None),
+            (macro_image, "マクロ指標"),
+            (japan_index_image, "日本株指数"),
+            (us_index_image, "米国株指数"),
+            (sector_image, "TOPIX-17 業種騰落率"),
         ],
     )
 
