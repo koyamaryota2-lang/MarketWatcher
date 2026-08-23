@@ -68,12 +68,24 @@ MACRO_INSTRUMENTS = {
     "銅": {
         "ticker": "HG=F", "unit": "", "decimals": 2, "change_mode": "percent", "use_24h": True,
     },
+    "ゴールド": {
+        "ticker": "GC=F", "unit": "", "decimals": 2, "change_mode": "percent", "use_24h": True,
+    },
+    "日本国債10年(ETF代用・価格は利回りと逆方向)": {
+        "ticker": "2561.T", "unit": "", "decimals": 2, "change_mode": "percent",
+    },
+}
+
+JAPAN_INDEX_INSTRUMENTS = {
+    "日経平均": {"ticker": "^N225", "unit": "", "decimals": 2, "change_mode": "percent"},
+    "TOPIX(ETF代用)": {"ticker": "1306.T", "unit": "", "decimals": 2, "change_mode": "percent"},
 }
 
 US_INDEX_INSTRUMENTS = {
     "S&P500": {"ticker": "^GSPC", "unit": "", "decimals": 2, "change_mode": "percent"},
     "NASDAQ": {"ticker": "^IXIC", "unit": "", "decimals": 2, "change_mode": "percent"},
     "NYダウ": {"ticker": "^DJI", "unit": "", "decimals": 2, "change_mode": "percent"},
+    "VIX(恐怖指数)": {"ticker": "^VIX", "unit": "", "decimals": 2, "change_mode": "percent"},
 }
 
 MARKET_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "market_log.csv")
@@ -305,6 +317,35 @@ def pct_to_hex_color(pct, vmax=COLOR_VMAX_PERCENT):
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def pct_to_discord_ansi(pct, vmax=COLOR_VMAX_PERCENT):
+    """Discordの```ansi```コードブロック用エスケープコード。上昇=緑、下落=赤。"""
+    if pct is None:
+        return "", ""
+    intensity = min(abs(pct) / vmax, 1.0)
+    reset = "\u001b[0m"
+    if pct >= 0:
+        code = "\u001b[1;32m" if intensity > 0.5 else "\u001b[0;32m"
+    else:
+        code = "\u001b[1;31m" if intensity > 0.5 else "\u001b[0;31m"
+    return code, reset
+
+
+def build_discord_ansi_table(rows: list, name_width: int = 24, close_width: int = 14, cell_width: int = 10):
+    """rowsから Discord の ```ansi``` コードブロック文字列を作る"""
+    header = f"{pad_label('名称', name_width)}{pad_label('終値', close_width)}"
+    header += "".join(pad_label(h, cell_width) for h in ["1D", "5D", "1M", "3M"])
+    lines = [header, "-" * display_width(header)]
+    for row in rows:
+        line = pad_label(row["name"], name_width) + pad_label(row["close"], close_width)
+        for disp, pct in row["cells"]:
+            code, reset = pct_to_discord_ansi(pct)
+            pad_n = max(cell_width - display_width(disp), 0)
+            colored = f"{code}{disp}{reset}" if code else disp
+            line += (" " * pad_n) + colored
+        lines.append(line)
+    return "```ansi\n" + "\n".join(lines) + "\n```"
+
+
 def pct_to_ansi(pct, vmax=COLOR_VMAX_PERCENT):
     """コンソール表示用のANSIエスケープコード(前景色)を返す。米国式: 上昇=緑、下落=赤。"""
     reset = "\033[0m"
@@ -399,7 +440,48 @@ def render_table_image(rows: list, title: str, filepath: str, note: str = None):
 
 
 # ---------------------------------------------------------------------------
-# Discord通知 (画像添付)
+# Discord通知 (テキスト表、画像なし)
+# ---------------------------------------------------------------------------
+
+def send_discord_text_tables(message: str, sections: list):
+    """
+    sections: [(title, rows, note), ...]
+    画像を使わず、```ansi```コードブロックのテキスト表としてDiscordに送信する。
+    embedのdescriptionに表を入れる(1embedあたり4096文字まで)。
+    """
+    if not requests:
+        print("requestsがインストールされていないため、Discord通知はスキップしました。")
+        return
+    if not DISCORD_WEBHOOK_URL:
+        print("DISCORD_WEBHOOK_URLが未設定のため、Discord通知はスキップしました。")
+        return
+
+    embeds = []
+    for title, rows, note in sections:
+        if not rows:
+            continue
+        table_text = build_discord_ansi_table(rows)
+        description = f"{note}\n{table_text}" if note else table_text
+        if len(description) > 4096:
+            description = description[:4000] + "\n...(省略)\n```"
+        embeds.append({
+            "title": title,
+            "color": 3447003,
+            "description": description,
+        })
+
+    payload = {"content": message, "embeds": embeds}
+
+    try:
+        resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=20)
+        if resp.status_code not in (200, 204):
+            print(f"Discord通知に失敗しました: status={resp.status_code}, body={resp.text}")
+    except Exception as e:
+        print(f"Discord通知でエラー: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Discord通知 (画像添付・任意で利用可能)
 # ---------------------------------------------------------------------------
 
 def send_discord_with_images(message: str, image_paths_with_titles: list):
@@ -455,19 +537,20 @@ def main():
     print("※値は各市場の直近取得済み終値です。24時間市場(ドル円/原油/銅)は直近24時間比、")
     print("  それ以外は前営業日比・5営業日比・1か月比・3か月比を表示します。")
 
-    os.makedirs(TABLE_IMAGE_DIR, exist_ok=True)
-
     macro_rows, macro_results = build_market_rows(MACRO_INSTRUMENTS)
+    japan_index_rows, japan_index_results = build_market_rows(JAPAN_INDEX_INSTRUMENTS)
     us_index_rows, us_index_results = build_market_rows(US_INDEX_INSTRUMENTS)
     sector_rows, sector_results = build_sector_rows()
 
     print_console_table("マクロ指標", macro_rows)
+    print_console_table("日本株指数", japan_index_rows)
     print_console_table("米国株指数", us_index_rows)
     print_console_table("TOPIX-17 業種騰落率", sector_rows)
 
     # CSV保存(従来通り)
     combined_market_results = {"日時": today}
     combined_market_results.update(macro_results)
+    combined_market_results.update(japan_index_results)
     combined_market_results.update(us_index_results)
     sector_results_with_date = {"日時": today}
     sector_results_with_date.update(sector_results)
@@ -476,27 +559,14 @@ def main():
     print(f"\n履歴を {MARKET_LOG_FILE} に保存しました。")
     print(f"履歴を {SECTOR_LOG_FILE} に保存しました。")
 
-    # 画像テーブル生成
-    macro_image = render_table_image(
-        macro_rows, "マクロ指標",
-        os.path.join(TABLE_IMAGE_DIR, "macro.png"),
-        note="24時間市場(ドル円/原油/銅)は直近24時間比、それ以外は前営業日比",
-    )
-    us_index_image = render_table_image(
-        us_index_rows, "米国株指数",
-        os.path.join(TABLE_IMAGE_DIR, "us_index.png"),
-    )
-    sector_image = render_table_image(
-        sector_rows, "TOPIX-17 業種騰落率(前日比が大きい順)",
-        os.path.join(TABLE_IMAGE_DIR, "sector.png"),
-    )
-
-    send_discord_with_images(
+    # Discordへテキスト表(画像なし)で送信
+    send_discord_text_tables(
         f"**デイリーマーケット概況 {today}**",
         [
-            (macro_image, "マクロ指標"),
-            (us_index_image, "米国株指数"),
-            (sector_image, "TOPIX-17 業種騰落率"),
+            ("マクロ指標", macro_rows, "24時間市場(ドル円/原油/銅/ゴールド)は直近24時間比、それ以外は前営業日比。国債はETF価格(利回りと逆方向)"),
+            ("日本株指数", japan_index_rows, "TOPIXは連動ETF(1306.T)の価格で代用"),
+            ("米国株指数", us_index_rows, None),
+            ("TOPIX-17 業種騰落率(前日比が大きい順)", sector_rows, None),
         ],
     )
 
