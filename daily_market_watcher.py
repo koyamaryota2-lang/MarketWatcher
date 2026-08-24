@@ -53,6 +53,11 @@ try:
 except ImportError:
     plt = None  # 画像テーブルを使わないなら無くてもOK
 
+try:
+    from PIL import Image
+except ImportError:
+    Image = None  # 画像軽量化(パレット化)を使わないなら無くてもOK
+
 # 環境変数 DISCORD_WEBHOOK_URL で渡す(コード内に直接書かない)
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 
@@ -436,6 +441,16 @@ def render_table_image(rows: list, title: str, filepath: str, note: str = None):
     fig.tight_layout()
     fig.savefig(filepath, dpi=160, bbox_inches="tight")
     plt.close(fig)
+
+    # ファイルサイズ軽量化: 表はほぼ単色の塗りつぶしなのでパレット化が効果的(見た目はほぼ劣化なし)
+    if Image is not None:
+        try:
+            img = Image.open(filepath).convert("RGB")
+            img_p = img.quantize(colors=32, method=Image.MEDIANCUT)
+            img_p.save(filepath, optimize=True)
+        except Exception as e:
+            print(f"[警告] 画像の軽量化に失敗しました({filepath}): {e}")
+
     return filepath
 
 
@@ -542,11 +557,11 @@ def main():
     macro_rows, macro_results = build_market_rows(MACRO_INSTRUMENTS)
     japan_index_rows, japan_index_results = build_market_rows(JAPAN_INDEX_INSTRUMENTS)
     us_index_rows, us_index_results = build_market_rows(US_INDEX_INSTRUMENTS)
+    stock_index_rows = japan_index_rows + us_index_rows
     sector_rows, sector_results = build_sector_rows()
 
     print_console_table("マクロ指標", macro_rows)
-    print_console_table("日本株指数", japan_index_rows)
-    print_console_table("米国株指数", us_index_rows)
+    print_console_table("株価指数(日本+米国)", stock_index_rows)
     print_console_table("TOPIX-17 業種騰落率", sector_rows)
 
     # CSV保存(従来通り)
@@ -567,14 +582,10 @@ def main():
         os.path.join(TABLE_IMAGE_DIR, "macro.png"),
         note="24時間市場(ドル円/原油/銅/ゴールド)は直近24時間比、それ以外は前営業日比。国債はETF価格(利回りと逆方向)",
     )
-    japan_index_image = render_table_image(
-        japan_index_rows, "日本株指数",
-        os.path.join(TABLE_IMAGE_DIR, "japan_index.png"),
+    stock_index_image = render_table_image(
+        stock_index_rows, "株価指数(日本+米国)",
+        os.path.join(TABLE_IMAGE_DIR, "stock_index.png"),
         note="TOPIXは連動ETF(1306.T)の価格で代用",
-    )
-    us_index_image = render_table_image(
-        us_index_rows, "米国株指数",
-        os.path.join(TABLE_IMAGE_DIR, "us_index.png"),
     )
     sector_image = render_table_image(
         sector_rows, "TOPIX-17 業種騰落率(前日比が大きい順)",
@@ -585,8 +596,7 @@ def main():
         f"**デイリーマーケット概況 {today}**",
         [
             (macro_image, "マクロ指標"),
-            (japan_index_image, "日本株指数"),
-            (us_index_image, "米国株指数"),
+            (stock_index_image, "株価指数(日本+米国)"),
             (sector_image, "TOPIX-17 業種騰落率"),
         ],
     )
