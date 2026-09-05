@@ -3,7 +3,7 @@ name: Daily Market Watcher
 on:
   schedule:
     # JST 7:45 = UTC 22:45 (前日)
-    - cron: '45 22 * * *'
+    # - cron: '45 22 * * *'
   workflow_dispatch: {}  # 手動実行もできるように
 
 permissions:
