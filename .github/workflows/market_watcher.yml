@@ -3,7 +3,7 @@ name: Daily Market Watcher
 on:
   schedule:
     # JST 7:45 = UTC 22:45 (前日)
-    # - cron: '45 22 * * *'
+    - cron: '45 22 * * 1-5'
   workflow_dispatch: {}  # 手動実行もできるように
 
 permissions:
@@ -47,3 +47,17 @@ jobs:
           git add market_log.csv sector_log_jp.csv
           git diff --staged --quiet || git commit -m "Update market logs $(date +'%Y-%m-%d')"
           git push
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Prepare Pages site
+        run: |
+          rm -rf _site
+          mkdir _site
+          cp index.html market_log.csv sector_log_jp.csv _site/
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
