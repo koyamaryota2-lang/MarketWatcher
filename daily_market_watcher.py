@@ -60,6 +60,7 @@ except ImportError:
 
 # 環境変数 DISCORD_WEBHOOK_URL で渡す(コード内に直接書かない)
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "")
 
 
 MACRO_INSTRUMENTS = {
@@ -542,6 +543,30 @@ def send_discord_with_images(message: str, image_paths_with_titles: list):
             fh.close()
 
 
+def send_dashboard_update():
+    """ダッシュボードURLだけをDiscordへ通知する"""
+    if not requests:
+        print("requestsがインストールされていないため、Discord通知をスキップしました。")
+        return
+    if not DISCORD_WEBHOOK_URL:
+        print("DISCORD_WEBHOOK_URLが未設定のため、Discord通知をスキップしました。")
+        return
+    if not DASHBOARD_URL:
+        print("DASHBOARD_URLが未設定のため、URL通知をスキップしました。")
+        return
+
+    try:
+        resp = requests.post(
+            DISCORD_WEBHOOK_URL,
+            json={"content": f"マーケットダッシュボードを更新しました\n{DASHBOARD_URL}"},
+            timeout=20,
+        )
+        if resp.status_code not in (200, 204):
+            print(f"Discord通知に失敗しました: status={resp.status_code}, body={resp.text}")
+    except Exception as e:
+        print(f"Discord通知でエラー: {e}")
+
+
 # ---------------------------------------------------------------------------
 # メイン処理
 # ---------------------------------------------------------------------------
@@ -576,7 +601,11 @@ def main():
     print(f"\n履歴を {MARKET_LOG_FILE} に保存しました。")
     print(f"履歴を {SECTOR_LOG_FILE} に保存しました。")
 
-    # 画像テーブル生成してDiscordに送信
+    if DASHBOARD_URL:
+        send_dashboard_update()
+        return
+
+    # ローカル実行時は従来通り画像テーブルを生成してDiscordに送信
     macro_image = render_table_image(
         macro_rows, "マクロ指標",
         os.path.join(TABLE_IMAGE_DIR, "macro.png"),

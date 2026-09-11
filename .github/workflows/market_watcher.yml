@@ -8,6 +8,12 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   run-market-watcher:
@@ -31,6 +37,7 @@ jobs:
       - name: Run market watcher script
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DASHBOARD_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: python daily_market_watcher.py
 
       - name: Commit CSV logs
@@ -40,3 +47,12 @@ jobs:
           git add market_log.csv sector_log_jp.csv
           git diff --staged --quiet || git commit -m "Update market logs $(date +'%Y-%m-%d')"
           git push
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
