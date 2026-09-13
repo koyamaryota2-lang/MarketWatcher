@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -45,8 +47,23 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add market_log.csv sector_log_jp.csv
-          git diff --staged --quiet || git commit -m "Update market logs $(date +'%Y-%m-%d')"
-          git push
+          if ! git diff --staged --quiet; then
+            git commit -m "Update market logs $(date +'%Y-%m-%d')"
+            pushed=false
+            for attempt in 1 2 3; do
+              git fetch origin main
+              if git rebase origin/main && git push origin HEAD:main; then
+                pushed=true
+                break
+              fi
+              git rebase --abort || true
+              echo "Push attempt ${attempt} failed; retrying against the latest main..."
+            done
+            if [ "$pushed" != "true" ]; then
+              echo "Could not push the generated CSV update after 3 attempts."
+              exit 1
+            fi
+          fi
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Prepare Pages site
