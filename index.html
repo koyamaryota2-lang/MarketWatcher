@@ -8,40 +8,48 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
-    :root { --ink: #102a43; --muted: #627d98; --paper: #f4f7f9; --line: #d9e2ec; --accent: #ef8354; --up: #18794e; --down: #c0392b; }
+    :root { --ink: #102a43; --muted: #627d98; --paper: #f4f7f9; --line: #d9e2ec; --accent: #ef8354; --up: #18794e; --down: #c0392b; --white: #fff; }
     * { box-sizing: border-box; }
     body { margin: 0; color: var(--ink); background: radial-gradient(circle at 90% 0%, #d8f3dc 0, transparent 35%), var(--paper); font-family: Georgia, "Yu Mincho", serif; }
     .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 40px 0 64px; }
     header { display: flex; justify-content: space-between; align-items: end; gap: 24px; border-bottom: 2px solid var(--ink); padding-bottom: 20px; }
     h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.5rem); line-height: .95; letter-spacing: 0; }
     .eyebrow { margin: 0 0 10px; color: var(--accent); font: 700 .78rem/1.2 Arial, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
-    .updated { color: var(--muted); font: .85rem/1.5 Arial, sans-serif; text-align: right; }
+    .updated { color: var(--muted); font: .78rem/1.5 Arial, sans-serif; text-align: right; }
+    .updated::before { content: "LIVE DATA"; display: block; width: fit-content; margin: 0 0 8px auto; padding: 4px 8px; border: 1px solid #b7dec9; border-radius: 999px; color: var(--up); background: #effaf3; font-size: .65rem; font-weight: 700; letter-spacing: .1em; }
     main { display: grid; gap: 22px; margin-top: 28px; }
-    section { background: rgba(255,255,255,.76); border: 1px solid var(--line); padding: 22px; box-shadow: 8px 8px 0 rgba(16,42,67,.07); }
-    h2 { margin: 0 0 18px; font-size: 1.35rem; }
-    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
-    select, button { min-height: 40px; border: 1px solid var(--ink); background: white; color: var(--ink); padding: 0 12px; font: 700 .9rem Arial, sans-serif; }
-    button { cursor: pointer; } button[aria-pressed="true"] { background: var(--ink); color: white; }
+    section { background: rgba(255,255,255,.82); border: 1px solid var(--line); padding: 24px; box-shadow: 8px 8px 0 rgba(16,42,67,.07); }
+    .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    h2 { margin: 0; font-size: 1.35rem; }
+    .section-kicker { margin: 0; color: var(--muted); font: .72rem Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+    .toolbar label { color: var(--muted); font: 700 .72rem Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+    select, button { min-height: 38px; border: 1px solid var(--ink); background: var(--white); color: var(--ink); padding: 0 12px; font: 700 .86rem Arial, sans-serif; }
+    select { min-width: 150px; } button { cursor: pointer; } button[aria-pressed="true"] { background: var(--ink); color: white; }
     .chart-wrap { height: min(54vw, 410px); min-height: 260px; }
-    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; }
-    .metric { border-left: 4px solid var(--accent); padding: 10px 12px; background: #fff; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .metric { min-width: 0; border-top: 3px solid var(--accent); padding: 12px; background: var(--white); }
     .metric small { display: block; color: var(--muted); font: .76rem Arial, sans-serif; }
-    .metric strong { display: block; margin-top: 5px; font: 700 1.2rem Arial, sans-serif; }
-    .heatmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 7px; }
-    .sector { min-height: 76px; display: flex; flex-direction: column; justify-content: space-between; padding: 10px; border: 1px solid rgba(16,42,67,.12); }
-    .sector span { font: .78rem/1.25 Arial, sans-serif; } .sector strong { font: 700 1.15rem Arial, sans-serif; }
+    .metric strong { display: block; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; font: 700 1.15rem Arial, sans-serif; white-space: nowrap; }
+    .metric-change { display: block; margin-top: 7px; font: 700 .75rem/1.35 Arial, sans-serif; overflow-wrap: anywhere; }
+    .metric-change.up { color: var(--up); } .metric-change.down { color: var(--down); } .metric-change.flat, .metric-change.missing { color: var(--muted); }
+    .heatmap { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+    .sector { min-height: 86px; display: flex; flex-direction: column; justify-content: space-between; padding: 11px; border: 1px solid rgba(16,42,67,.12); }
+    .sector span { display: flex; gap: 6px; font: .75rem/1.25 Arial, sans-serif; } .sector strong { font: 700 1.1rem Arial, sans-serif; }
+    .rank { color: var(--muted); font-size: .68rem; }
     .note { color: var(--muted); font: .76rem/1.5 Arial, sans-serif; }
     .status { margin: 10px 0 0; color: var(--muted); font: .85rem Arial, sans-serif; }
-    @media (max-width: 620px) { .shell { width: min(100% - 20px, 1180px); padding-top: 24px; } header { display: block; } .updated { margin-top: 14px; text-align: left; } section { padding: 16px; } }
+    @media (max-width: 900px) { .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .heatmap { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    @media (max-width: 620px) { .shell { width: min(100% - 20px, 1180px); padding-top: 24px; } header { display: block; } .updated { margin-top: 14px; text-align: left; } .updated::before { margin-left: 0; } section { padding: 16px; } .section-heading { display: block; } .section-kicker { margin-top: 5px; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .heatmap { grid-template-columns: repeat(2, minmax(0, 1fr)); } .toolbar { align-items: stretch; } select { flex: 1; } }
   </style>
 </head>
 <body>
   <div class="shell">
     <header><div><p class="eyebrow">Daily market intelligence</p><h1>Market<br>Watcher</h1></div><div class="updated" id="updated">読み込み中...</div></header>
     <main>
-      <section><h2>最新スナップショット</h2><div class="metrics" id="metrics"></div></section>
-      <section><h2>市場の推移</h2><div class="toolbar"><label for="indicator">指標</label><select id="indicator"></select><button type="button" data-days="30" aria-pressed="true">30日</button><button type="button" data-days="90" aria-pressed="false">90日</button><button type="button" data-days="0" aria-pressed="false">全期間</button></div><div class="chart-wrap"><canvas id="market-chart"></canvas></div><p class="status" id="market-status"></p></section>
-      <section><h2>TOPIX-17 業種騰落率</h2><div class="heatmap" id="heatmap"></div><p class="note">直近ログの値。上昇は緑、下落は赤。カードにカーソルを合わせると数値を確認できます。</p></section>
+      <section><div class="section-heading"><h2>最新スナップショット</h2><p class="section-kicker">Latest close</p></div><div class="metrics" id="metrics"></div></section>
+      <section><div class="section-heading"><h2>市場の推移</h2><p class="section-kicker">Historical movement</p></div><div class="toolbar"><label for="indicator">指標</label><select id="indicator"></select><button type="button" data-days="30" aria-pressed="true">30日</button><button type="button" data-days="90" aria-pressed="false">90日</button><button type="button" data-days="0" aria-pressed="false">全期間</button></div><div class="chart-wrap"><canvas id="market-chart"></canvas></div><p class="status" id="market-status"></p></section>
+      <section><div class="section-heading"><h2>TOPIX-17 業種騰落率</h2><p class="section-kicker">Ranked by daily change</p></div><div class="heatmap" id="heatmap"></div><p class="note">直近ログの値。上昇は緑、下落は赤。順位は前日比の大きい順です。</p></section>
     </main>
   </div>
   <script>
@@ -51,10 +59,10 @@
     function colorFor(value) { const strength = Math.min(Math.abs(value) / 3, 1); return value >= 0 ? `rgba(24,121,78,${.15 + strength * .65})` : `rgba(192,57,43,${.15 + strength * .65})`; }
     function parseCsv(path) { return new Promise((resolve, reject) => Papa.parse(path + '?v=' + Date.now(), { download: true, header: true, skipEmptyLines: true, complete: result => resolve(result.data), error: reject })); }
     const isDataColumn = key => key !== '日時' && !key.startsWith('__parsed_');
-    function renderMetrics() { const latest = state.market.at(-1); const el = document.querySelector('#metrics'); if (!latest) return; el.innerHTML = Object.entries(latest).filter(([key]) => isDataColumn(key)).map(([key, value]) => `<div class="metric"><small>${key}</small><strong>${number(value)}</strong></div>`).join(''); document.querySelector('#updated').textContent = `最終更新 ${latest['日時']} / ${state.market.length} records`; }
+    function renderMetrics() { const latest = state.market.at(-1); const el = document.querySelector('#metrics'); if (!latest) return; const latestDate = latest['日時'].slice(0, 10); const previousDay = [...state.market].reverse().find(row => row['日時'].slice(0, 10) < latestDate); el.innerHTML = Object.entries(latest).filter(([key]) => isDataColumn(key)).map(([key, value]) => { const current = Number(value); const previous = previousDay ? Number(previousDay[key]) : NaN; const difference = current - previous; const rate = previous ? difference / Math.abs(previous) * 100 : NaN; const direction = Number.isFinite(rate) ? rate > 0 ? 'up' : rate < 0 ? 'down' : 'flat' : 'missing'; const change = Number.isFinite(difference) && Number.isFinite(rate) ? `${difference >= 0 ? '+' : ''}${number(difference)} (${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%)` : '前日データなし'; return `<div class="metric"><small>${key}</small><strong>${number(current)}</strong><span class="metric-change ${direction}">前日比 ${change}</span></div>`; }).join(''); document.querySelector('#updated').textContent = `最終更新 ${latest['日時']} / ${state.market.length} records`; }
     function renderSelect() { const keys = Object.keys(state.market[0] || {}).filter(isDataColumn); document.querySelector('#indicator').innerHTML = keys.map(key => `<option value="${key}">${key}</option>`).join(''); }
     function renderChart() { const key = document.querySelector('#indicator').value; const rows = state.days ? state.market.slice(-state.days) : state.market; const ctx = document.querySelector('#market-chart'); if (state.chart) state.chart.destroy(); state.chart = new Chart(ctx, { type: 'line', data: { labels: rows.map(row => dateLabel(row['日時'])), datasets: [{ label: key, data: rows.map(row => Number(row[key])), borderColor: '#ef8354', backgroundColor: 'rgba(239,131,84,.14)', fill: true, pointRadius: rows.length > 60 ? 0 : 2, tension: .25 }] }, options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: item => `${item.dataset.label}: ${number(item.raw)}` } } }, scales: { x: { ticks: { maxTicksLimit: 8 } }, y: { ticks: { callback: value => number(value) } } } } }); document.querySelector('#market-status').textContent = `${key} / ${rows.length} records`; }
-    function renderHeatmap() { const latest = state.sectors.at(-1); const el = document.querySelector('#heatmap'); if (!latest) return; el.innerHTML = Object.entries(latest).filter(([key]) => key !== '日時').map(([key, value]) => { const n = Number(value); return `<div class="sector" style="background:${colorFor(n)}" title="${key}: ${n.toFixed(2)}%"><span>${key}</span><strong>${n >= 0 ? '+' : ''}${n.toFixed(2)}%</strong></div>`; }).join(''); }
+    function renderHeatmap() { const latest = state.sectors.at(-1); const el = document.querySelector('#heatmap'); if (!latest) return; const sectors = Object.entries(latest).filter(([key]) => isDataColumn(key)).map(([key, value]) => ({ key, value: Number(value) })).sort((a, b) => b.value - a.value); el.innerHTML = sectors.map(({ key, value }, index) => `<div class="sector" style="background:${colorFor(value)}" title="${key}: ${value.toFixed(2)}%"><span><i class="rank">${String(index + 1).padStart(2, '0')}</i>${key}</span><strong>${value >= 0 ? '+' : ''}${value.toFixed(2)}%</strong></div>`).join(''); }
     async function load() { try { [state.market, state.sectors] = await Promise.all([parseCsv('market_log.csv'), parseCsv('sector_log_jp.csv')]); renderMetrics(); renderSelect(); renderChart(); renderHeatmap(); } catch (error) { document.querySelector('#updated').textContent = 'データを読み込めませんでした'; console.error(error); } }
     document.querySelector('#indicator').addEventListener('change', renderChart); document.querySelectorAll('[data-days]').forEach(button => button.addEventListener('click', () => { state.days = Number(button.dataset.days); document.querySelectorAll('[data-days]').forEach(item => item.setAttribute('aria-pressed', item === button)); renderChart(); })); load();
   </script>
