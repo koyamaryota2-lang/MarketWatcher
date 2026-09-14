@@ -8,6 +8,7 @@ daily_market_watcher.py
 - 米国株価指数 (S&P500 / NASDAQ / NYダウ)
 - WTI原油先物
 - 銅先物
+- 鉄鉱石先物
 - TOPIX-17 業種ETFの日次騰落率
 
 出力はテーブル画像（色グラデーション付き、日本の相場慣習に合わせて上昇=赤、下落=青）
@@ -73,6 +74,9 @@ MACRO_INSTRUMENTS = {
     },
     "銅": {
         "ticker": "HG=F", "unit": "", "decimals": 2, "change_mode": "percent", "use_24h": True,
+    },
+    "鉄鉱石": {
+        "ticker": "TIO=F", "unit": "", "decimals": 2, "change_mode": "percent", "use_24h": True,
     },
     "ゴールド": {
         "ticker": "GC=F", "unit": "", "decimals": 2, "change_mode": "percent", "use_24h": True,
@@ -194,10 +198,23 @@ def fetch_sector_change(ticker: str):
 
 
 def append_csv_row(file_path: str, row: dict):
-    write_header = not os.path.exists(file_path)
+    fieldnames = list(row.keys())
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        with open(file_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            existing_fieldnames = reader.fieldnames or []
+            old_rows = list(reader)
+        fieldnames = existing_fieldnames + [
+            name for name in fieldnames if name not in existing_fieldnames
+        ]
+        if fieldnames != existing_fieldnames:
+            with open(file_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(old_rows)
     with open(file_path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=row.keys())
-        if write_header:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
             writer.writeheader()
         writer.writerow(row)
 
@@ -574,7 +591,7 @@ def send_dashboard_update():
 def main():
     today = datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"\n=== デイリーマーケット概況 {today} ===")
-    print("※値は各市場の直近取得済み終値です。24時間市場(ドル円/原油/銅)は直近24時間比、")
+    print("※値は各市場の直近取得済み終値です。24時間市場(ドル円/原油/銅/鉄鉱石)は直近24時間比、")
     print("  それ以外は前営業日比・5営業日比・1か月比・3か月比を表示します。")
 
     os.makedirs(TABLE_IMAGE_DIR, exist_ok=True)
@@ -609,7 +626,7 @@ def main():
     macro_image = render_table_image(
         macro_rows, "マクロ指標",
         os.path.join(TABLE_IMAGE_DIR, "macro.png"),
-        note="24時間市場(ドル円/原油/銅/ゴールド)は直近24時間比、それ以外は前営業日比。国債はETF価格(利回りと逆方向)",
+        note="24時間市場(ドル円/原油/銅/鉄鉱石/ゴールド)は直近24時間比、それ以外は前営業日比。国債はETF価格(利回りと逆方向)",
     )
     stock_index_image = render_table_image(
         stock_index_rows, "株価指数(日本+米国)",
