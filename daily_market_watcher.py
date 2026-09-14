@@ -197,8 +197,8 @@ def fetch_sector_change(ticker: str):
     return latest, prev, five_day_close, month_close, quarter_close
 
 
-def append_csv_row(file_path: str, row: dict):
-    fieldnames = list(row.keys())
+def append_csv_row(file_path: str, row: dict, fieldnames=None):
+    fieldnames = list(fieldnames or row.keys())
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
         with open(file_path, newline="", encoding="utf-8") as f:
             reader = csv.reader(f)
@@ -207,9 +207,8 @@ def append_csv_row(file_path: str, row: dict):
                 dict(zip(existing_fieldnames, values[:len(existing_fieldnames)]))
                 for values in reader
             ]
-        fieldnames = existing_fieldnames + [
-            name for name in fieldnames if name not in existing_fieldnames
-        ]
+        if fieldnames is None:
+            fieldnames = existing_fieldnames
         if fieldnames != existing_fieldnames:
             with open(file_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -262,6 +261,7 @@ def build_market_rows(instruments: dict):
             )
             if latest is None:
                 rows.append({"name": name, "close": "データ取得失敗", "cells": [("-", None)] * 4})
+                raw_results[name] = None
                 continue
 
             close_str = format_value(latest, metadata["unit"], metadata["decimals"])
@@ -277,6 +277,7 @@ def build_market_rows(instruments: dict):
             raw_results[name] = round(latest, 4)
         except Exception as e:
             rows.append({"name": name, "close": f"エラー", "cells": [("-", None)] * 4})
+            raw_results[name] = None
             print(f"[警告] {name} の取得でエラー: {e}")
 
     return rows, raw_results
@@ -616,7 +617,13 @@ def main():
     combined_market_results.update(us_index_results)
     sector_results_with_date = {"日時": today}
     sector_results_with_date.update(sector_results)
-    append_csv_row(MARKET_LOG_FILE, combined_market_results)
+    market_fieldnames = [
+        "日時",
+        *MACRO_INSTRUMENTS.keys(),
+        *JAPAN_INDEX_INSTRUMENTS.keys(),
+        *US_INDEX_INSTRUMENTS.keys(),
+    ]
+    append_csv_row(MARKET_LOG_FILE, combined_market_results, fieldnames=market_fieldnames)
     append_csv_row(SECTOR_LOG_FILE, sector_results_with_date)
     print(f"\n履歴を {MARKET_LOG_FILE} に保存しました。")
     print(f"履歴を {SECTOR_LOG_FILE} に保存しました。")
