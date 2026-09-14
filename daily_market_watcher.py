@@ -201,9 +201,12 @@ def append_csv_row(file_path: str, row: dict):
     fieldnames = list(row.keys())
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
         with open(file_path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            existing_fieldnames = reader.fieldnames or []
-            old_rows = list(reader)
+            reader = csv.reader(f)
+            existing_fieldnames = next(reader, [])
+            old_rows = [
+                dict(zip(existing_fieldnames, values[:len(existing_fieldnames)]))
+                for values in reader
+            ]
         fieldnames = existing_fieldnames + [
             name for name in fieldnames if name not in existing_fieldnames
         ]
