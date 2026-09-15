@@ -100,6 +100,7 @@ US_INDEX_INSTRUMENTS = {
 
 MARKET_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "market_log.csv")
 SECTOR_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sector_log_jp.csv")
+SECTOR_DETAIL_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sector_detail_log_jp.csv")
 TABLE_IMAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "table_images")
 
 SECTOR_ETFS = {
@@ -286,6 +287,7 @@ def build_market_rows(instruments: dict):
 def build_sector_rows():
     rows = []
     raw_results = {}
+    detail_results = []
     for name, ticker in SECTOR_ETFS.items():
         try:
             latest, prev, five_day_close, month_close, quarter_close = fetch_sector_change(ticker)
@@ -293,6 +295,15 @@ def build_sector_rows():
                 rows.append({"name": name, "close": "データ取得失敗", "cells": [("-", None)] * 4}, )
                 continue
             daily_pct = compute_pct(latest, prev)
+            detail_results.append({
+                "日時": None,
+                "業種": name,
+                "終値": round(latest, 1),
+                "1D": round(daily_pct, 2) if daily_pct is not None else None,
+                "1W": round(compute_pct(latest, five_day_close), 2) if five_day_close else None,
+                "1M": round(compute_pct(latest, month_close), 2) if month_close else None,
+                "3M": round(compute_pct(latest, quarter_close), 2) if quarter_close else None,
+            })
             close_str = f"{latest:,.1f}"
             cells = [
                 (format_directional_change(daily_pct) if daily_pct is not None else "データ不足", daily_pct),
@@ -321,7 +332,7 @@ def build_sector_rows():
 
     # 前日比が大きい順にソート(業種の強弱が一目でわかるように)
     rows.sort(key=lambda r: r.get("_sort", float("-inf")) if r.get("_sort") is not None else float("-inf"), reverse=True)
-    return rows, raw_results
+    return rows, raw_results, detail_results
 
 
 # ---------------------------------------------------------------------------
@@ -604,7 +615,7 @@ def main():
     japan_index_rows, japan_index_results = build_market_rows(JAPAN_INDEX_INSTRUMENTS)
     us_index_rows, us_index_results = build_market_rows(US_INDEX_INSTRUMENTS)
     stock_index_rows = japan_index_rows + us_index_rows
-    sector_rows, sector_results = build_sector_rows()
+    sector_rows, sector_results, sector_detail_results = build_sector_rows()
 
     print_console_table("マクロ指標", macro_rows)
     print_console_table("株価指数(日本+米国)", stock_index_rows)
@@ -617,6 +628,8 @@ def main():
     combined_market_results.update(us_index_results)
     sector_results_with_date = {"日時": today}
     sector_results_with_date.update(sector_results)
+    for detail_row in sector_detail_results:
+        detail_row["日時"] = today
     market_fieldnames = [
         "日時",
         *MACRO_INSTRUMENTS.keys(),
@@ -625,6 +638,8 @@ def main():
     ]
     append_csv_row(MARKET_LOG_FILE, combined_market_results, fieldnames=market_fieldnames)
     append_csv_row(SECTOR_LOG_FILE, sector_results_with_date)
+    for detail_row in sector_detail_results:
+        append_csv_row(SECTOR_DETAIL_LOG_FILE, detail_row)
     print(f"\n履歴を {MARKET_LOG_FILE} に保存しました。")
     print(f"履歴を {SECTOR_LOG_FILE} に保存しました。")
 
