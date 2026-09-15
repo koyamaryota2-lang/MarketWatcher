@@ -11,16 +11,41 @@ import daily_market_watcher as watcher
 class FetchLatestTests(unittest.TestCase):
     @patch("daily_market_watcher.yf.Ticker")
     def test_fetch_latest_includes_three_month_reference(self, mock_ticker):
-        closes = pd.Series(list(range(1, 80)))
+        dates = pd.date_range("2026-01-01", periods=100, freq="D")
+        closes = pd.Series(list(range(1, 101)), index=dates)
         mock_ticker.return_value.history.return_value = pd.DataFrame({"Close": closes})
 
         latest, prev, five_day_close, month_close, quarter_close = watcher.fetch_latest("TEST")
 
-        self.assertEqual(latest, 79.0)
-        self.assertEqual(prev, 78.0)
-        self.assertEqual(five_day_close, 74.0)
-        self.assertEqual(month_close, 58.0)
-        self.assertEqual(quarter_close, 14.0)
+        self.assertEqual(latest, 100.0)
+        self.assertEqual(prev, 99.0)
+        self.assertEqual(five_day_close, 95.0)
+        self.assertEqual(month_close, 79.0)
+        self.assertEqual(quarter_close, 10.0)
+
+    @patch("daily_market_watcher.yf.Ticker")
+    def test_fetch_latest_falls_back_to_latest_prior_row_for_three_month_reference(self, mock_ticker):
+        dates = pd.date_range("2026-01-01", "2026-04-10", freq="D").delete(9)
+        closes = pd.Series(list(range(1, len(dates) + 1)), index=dates)
+        mock_ticker.return_value.history.return_value = pd.DataFrame({"Close": closes})
+
+        *_, quarter_close = watcher.fetch_latest("TEST")
+
+        self.assertEqual(quarter_close, 9.0)
+
+    @patch("daily_market_watcher.yf.Ticker")
+    def test_fetch_latest_returns_missing_three_month_reference_when_no_earlier_history_exists(self, mock_ticker):
+        dates = pd.date_range("2026-03-20", periods=10, freq="D")
+        closes = pd.Series(list(range(1, 11)), index=dates)
+        mock_ticker.return_value.history.return_value = pd.DataFrame({"Close": closes})
+
+        latest, prev, five_day_close, month_close, quarter_close = watcher.fetch_latest("TEST")
+
+        self.assertEqual(latest, 10.0)
+        self.assertEqual(prev, 9.0)
+        self.assertEqual(five_day_close, 5.0)
+        self.assertIsNone(month_close)
+        self.assertIsNone(quarter_close)
 
 
 class AppendCsvRowTests(unittest.TestCase):
