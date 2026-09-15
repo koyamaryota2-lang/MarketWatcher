@@ -136,6 +136,17 @@ JAPANESE_FONT_CANDIDATES = [
 # データ取得
 # ---------------------------------------------------------------------------
 
+def historical_close_on_or_before(closes, latest_time, days_ago: int):
+    """指定日以前で取得できる最新の終値を返す"""
+    if closes is None or closes.empty:
+        return None
+    target_time = latest_time - timedelta(days=days_ago)
+    historical = closes.loc[closes.index <= target_time]
+    if historical.empty:
+        return None
+    return float(historical.iloc[-1])
+
+
 def fetch_latest(ticker: str, use_24h: bool = False):
     """直近値、比較値、5営業日前、約1か月前、約3か月前の終値を取得"""
     data = yf.Ticker(ticker).history(period="180d", interval="1d", auto_adjust=False)
@@ -143,10 +154,11 @@ def fetch_latest(ticker: str, use_24h: bool = False):
     if closes is None or closes.empty:
         return None, None, None, None, None
     latest_close = float(closes.iloc[-1])
+    latest_time = closes.index[-1]
     prev_close = float(closes.iloc[-2]) if len(closes) > 1 else None
     five_day_close = float(closes.iloc[-6]) if len(closes) > 5 else None
     month_close = float(closes.iloc[-22]) if len(closes) > 21 else None
-    quarter_close = float(closes.iloc[-66]) if len(closes) > 65 else None
+    quarter_close = historical_close_on_or_before(closes, latest_time, 90)
 
     if use_24h:
         intraday = yf.Ticker(ticker).history(
