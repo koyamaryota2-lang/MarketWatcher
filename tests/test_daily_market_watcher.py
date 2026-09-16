@@ -66,6 +66,25 @@ class AppendCsvRowTests(unittest.TestCase):
                 ["2026-01-03", "102", "120"],
             ])
 
+    def test_append_unique_csv_rows_fills_missing_values_for_existing_timestamp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/market.csv"
+            with open(path, "w", newline="", encoding="utf-8") as handle:
+                handle.write("日時,copper,iron\n2026-01-01,100,\n")
+
+            watcher.append_unique_csv_rows(
+                path,
+                [{"日時": "2026-01-01", "copper": "101", "iron": "120"}],
+                fieldnames=["日時", "copper", "iron"],
+            )
+
+            with open(path, newline="", encoding="utf-8") as handle:
+                rows = list(csv.reader(handle))
+            self.assertEqual(rows, [
+                ["日時", "copper", "iron"],
+                ["2026-01-01", "100", "120"],
+            ])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -179,38 +179,30 @@ def fetch_latest(ticker: str, use_24h: bool = False):
     return latest_close, prev_close, five_day_close, month_close, quarter_close
 
 
-def fetch_historical_closes(ticker: str, target_dates):
-    """指定日以前の終値を、ダッシュボードの比較用にまとめて取得"""
+def fetch_historical_closes(ticker: str, start_date: str, end_date: str):
+    """指定期間の日次終値を、ダッシュボードの履歴補完用に取得"""
     data = yf.Ticker(ticker).history(period="180d", interval="1d", auto_adjust=False)
     closes = data["Close"].dropna() if not data.empty else None
     if closes is None or closes.empty:
-        return {target_date: None for target_date in target_dates}
+        return {}
 
-    dated_closes = sorted(
-        (timestamp.strftime("%Y-%m-%d"), float(value))
-        for timestamp, value in closes.items()
-    )
     return {
-        target_date: next(
-            (value for date, value in reversed(dated_closes) if date <= target_date),
-            None,
-        )
-        for target_date in target_dates
+        timestamp.strftime("%Y-%m-%d"): round(float(value), 4)
+        for timestamp, value in closes.items()
+        if start_date <= timestamp.strftime("%Y-%m-%d") <= end_date
     }
 
 
 def build_market_history_rows(instruments: dict, latest_date: str):
-    """1W/1M/3M比較用の過去終値をCSV行として組み立てる"""
-    target_dates = {
-        (datetime.fromisoformat(latest_date) - timedelta(days=days)).strftime("%Y-%m-%d")
-        for days in (7, 30, 90)
-    }
-    rows = {target_date: {"日時": f"{target_date} 00:00"} for target_date in target_dates}
+    """直近3か月の日次履歴から不足しているCSV行を組み立てる"""
+    latest_day = datetime.fromisoformat(latest_date).date()
+    start_date = (latest_day - timedelta(days=90)).isoformat()
+    end_date = (latest_day - timedelta(days=1)).isoformat()
+    rows = {}
     for name, metadata in instruments.items():
-        historical = fetch_historical_closes(metadata["ticker"], target_dates)
+        historical = fetch_historical_closes(metadata["ticker"], start_date, end_date)
         for target_date, value in historical.items():
-            if value is not None:
-                rows[target_date][name] = round(value, 4)
+            rows.setdefault(target_date, {"日時": f"{target_date} 00:00"})[name] = value
     return [rows[target_date] for target_date in sorted(rows)]
 
 
@@ -270,18 +262,26 @@ def append_csv_row(file_path: str, row: dict, fieldnames=None):
 
 
 def append_unique_csv_rows(file_path: str, rows, fieldnames):
-    """日時が重複する履歴行を追加しない"""
-    existing_dates = set()
+    """履歴行を追加し、同じ日時の空欄は取得値で補完する"""
+    existing_rows = []
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
         with open(file_path, newline="", encoding="utf-8") as f:
-            existing_dates = {
-                row.get("日時", "")
-                for row in csv.DictReader(f)
-            }
+            existing_rows = list(csv.DictReader(f))
+    existing_by_date = {row.get("日時", ""): row for row in existing_rows}
     for row in rows:
-        if row.get("日時") not in existing_dates:
-            append_csv_row(file_path, row, fieldnames=fieldnames)
-            existing_dates.add(row.get("日時"))
+        timestamp = row.get("日時", "")
+        existing = existing_by_date.get(timestamp)
+        if existing is None:
+            existing_by_date[timestamp] = dict(row)
+            existing_rows.append(existing_by_date[timestamp])
+            continue
+        for key, value in row.items():
+            if value not in (None, "") and existing.get(key, "") in (None, ""):
+                existing[key] = value
+    with open(file_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(existing_rows)
 
 
 def display_width(text: str):
