@@ -37,6 +37,9 @@
     .snapshot-table td:first-child { font-weight: 700; }
     .snapshot-table td.long-label { font-size: .66rem; line-height: 1.2; }
     .snapshot-table .metric-change { display: block; margin: 0; text-align: center; }
+    .snapshot-table td:has(.metric-change.up) { background: rgba(24,121,78,.22); color: var(--up); }
+    .snapshot-table td:has(.metric-change.down) { background: rgba(192,57,43,.22); color: var(--down); }
+    .snapshot-table td:has(.metric-change.flat), .snapshot-table td:has(.metric-change.missing) { background: rgba(98,125,152,.12); color: var(--muted); }
     .metric { min-width: 0; border-top: 3px solid var(--accent); padding: 12px; background: var(--white); }
     .metric small { display: block; color: var(--muted); font: .76rem Arial, sans-serif; }
     .metric strong { display: block; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; font: 700 1.15rem Arial, sans-serif; white-space: nowrap; }
