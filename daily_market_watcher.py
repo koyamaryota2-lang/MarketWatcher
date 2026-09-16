@@ -179,6 +179,41 @@ def fetch_latest(ticker: str, use_24h: bool = False):
     return latest_close, prev_close, five_day_close, month_close, quarter_close
 
 
+def fetch_historical_closes(ticker: str, target_dates):
+    """指定日以前の終値を、ダッシュボードの比較用にまとめて取得"""
+    data = yf.Ticker(ticker).history(period="180d", interval="1d", auto_adjust=False)
+    closes = data["Close"].dropna() if not data.empty else None
+    if closes is None or closes.empty:
+        return {target_date: None for target_date in target_dates}
+
+    dated_closes = sorted(
+        (timestamp.strftime("%Y-%m-%d"), float(value))
+        for timestamp, value in closes.items()
+    )
+    return {
+        target_date: next(
+            (value for date, value in reversed(dated_closes) if date <= target_date),
+            None,
+        )
+        for target_date in target_dates
+    }
+
+
+def build_market_history_rows(instruments: dict, latest_date: str):
+    """1W/1M/3M比較用の過去終値をCSV行として組み立てる"""
+    target_dates = {
+        (datetime.fromisoformat(latest_date) - timedelta(days=days)).strftime("%Y-%m-%d")
+        for days in (7, 30, 90)
+    }
+    rows = {target_date: {"日時": f"{target_date} 00:00"} for target_date in target_dates}
+    for name, metadata in instruments.items():
+        historical = fetch_historical_closes(metadata["ticker"], target_dates)
+        for target_date, value in historical.items():
+            if value is not None:
+                rows[target_date][name] = round(value, 4)
+    return [rows[target_date] for target_date in sorted(rows)]
+
+
 def compute_pct(latest, reference):
     """色グラデーション判定用に常にパーセント換算した変化率を返す"""
     if latest is None or reference is None or reference == 0:
@@ -232,6 +267,21 @@ def append_csv_row(file_path: str, row: dict, fieldnames=None):
         if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
             writer.writeheader()
         writer.writerow(row)
+
+
+def append_unique_csv_rows(file_path: str, rows, fieldnames):
+    """日時が重複する履歴行を追加しない"""
+    existing_dates = set()
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        with open(file_path, newline="", encoding="utf-8") as f:
+            existing_dates = {
+                row.get("日時", "")
+                for row in csv.DictReader(f)
+            }
+    for row in rows:
+        if row.get("日時") not in existing_dates:
+            append_csv_row(file_path, row, fieldnames=fieldnames)
+            existing_dates.add(row.get("日時"))
 
 
 def display_width(text: str):
@@ -648,6 +698,16 @@ def main():
         *JAPAN_INDEX_INSTRUMENTS.keys(),
         *US_INDEX_INSTRUMENTS.keys(),
     ]
+    historical_rows_by_date = {}
+    for instruments in (MACRO_INSTRUMENTS, JAPAN_INDEX_INSTRUMENTS, US_INDEX_INSTRUMENTS):
+        for history_row in build_market_history_rows(instruments, today):
+            historical_rows_by_date.setdefault(history_row["日時"], {"日時": history_row["日時"]})
+            historical_rows_by_date[history_row["日時"]].update(history_row)
+    append_unique_csv_rows(
+        MARKET_LOG_FILE,
+        [historical_rows_by_date[key] for key in sorted(historical_rows_by_date)],
+        fieldnames=market_fieldnames,
+    )
     append_csv_row(MARKET_LOG_FILE, combined_market_results, fieldnames=market_fieldnames)
     append_csv_row(SECTOR_LOG_FILE, sector_results_with_date)
     for detail_row in sector_detail_results:
