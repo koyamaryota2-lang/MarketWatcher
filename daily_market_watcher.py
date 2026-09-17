@@ -81,7 +81,7 @@ MACRO_INSTRUMENTS = {
     "ゴールド": {
         "ticker": "GC=F", "unit": "", "decimals": 2, "change_mode": "percent", "use_24h": True,
     },
-    "日本国債10年(ETF代用・価格は利回りと逆方向)": {
+    "日本国債ETF(利回りと逆)": {
         "ticker": "2561.T", "unit": "", "decimals": 2, "change_mode": "percent",
     },
 }
