@@ -82,8 +82,8 @@
   </div>
   <script>
     const state = { market: [], sectors: [], sectorDetails: [], days: 30, chart: null, dashboardTab: 'snapshot', snapshotTab: 'market' };
-    const number = value => Number.isFinite(Number(value)) ? Number(value).toLocaleString('ja-JP', { maximumFractionDigits: 2 }) : 'データなし';
-    const dateLabel = value => value ? value.replace(' ', 'T').slice(5, 16).replace('T', ' ') : '';
+    const number = value => value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value).toLocaleString('ja-JP', { maximumFractionDigits: 2 }) : 'データなし';
+    const dateLabel = value => value ? value.slice(5, 10) : '';
     function colorFor(value) { const strength = Math.min(Math.abs(value) / 3, 1); return value >= 0 ? `rgba(24,121,78,${.15 + strength * .65})` : `rgba(192,57,43,${.15 + strength * .65})`; }
     function parseCsv(path) { return new Promise((resolve, reject) => Papa.parse(path + '?v=' + Date.now(), { download: true, header: true, skipEmptyLines: true, complete: result => resolve(result.data), error: reject })); }
     const isDataColumn = key => key !== '日時' && !key.startsWith('__parsed_');

@@ -35,6 +35,7 @@ import os
 import sys
 import unicodedata
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 try:
     import yfinance as yf
@@ -666,7 +667,7 @@ def send_dashboard_update():
 # ---------------------------------------------------------------------------
 
 def main():
-    today = datetime.now().strftime("%Y-%m-%d %H:%M")
+    today = datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M")
     print(f"\n=== デイリーマーケット概況 {today} ===")
     print("※値は各市場の直近取得済み終値です。24時間市場(ドル円/原油/銅/鉄鉱石)は直近24時間比、")
     print("  それ以外は前営業日比・5営業日比・1か月比・3か月比を表示します。")
