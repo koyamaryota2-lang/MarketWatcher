@@ -100,6 +100,7 @@ US_INDEX_INSTRUMENTS = {
 }
 
 MARKET_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "market_log.csv")
+MARKET_OHLC_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "market_ohlc.csv")
 SECTOR_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sector_log_jp.csv")
 SECTOR_DETAIL_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sector_detail_log_jp.csv")
 TABLE_IMAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "table_images")
@@ -194,6 +195,28 @@ def fetch_historical_closes(ticker: str, start_date: str, end_date: str):
     }
 
 
+def fetch_historical_ohlc(ticker: str, indicator: str, start_date: str, end_date: str):
+    """指定期間の日次OHLCを、ろうそく足表示用に取得"""
+    data = yf.Ticker(ticker).history(period="180d", interval="1d", auto_adjust=False)
+    if data.empty:
+        return []
+    result = []
+    for timestamp, row in data.iterrows():
+        target_date = timestamp.strftime("%Y-%m-%d")
+        values = [row.get(column) for column in ("Open", "High", "Low", "Close")]
+        if not start_date <= target_date <= end_date or any(value is None or value != value for value in values):
+            continue
+        result.append({
+            "日時": f"{target_date} 00:00",
+            "指標": indicator,
+            "始値": round(float(values[0]), 4),
+            "高値": round(float(values[1]), 4),
+            "安値": round(float(values[2]), 4),
+            "終値": round(float(values[3]), 4),
+        })
+    return result
+
+
 def build_market_history_rows(instruments: dict, latest_date: str):
     """直近3か月の日次履歴から不足しているCSV行を組み立てる"""
     latest_day = datetime.fromisoformat(latest_date).date()
@@ -262,19 +285,21 @@ def append_csv_row(file_path: str, row: dict, fieldnames=None):
         writer.writerow(row)
 
 
-def append_unique_csv_rows(file_path: str, rows, fieldnames):
+def append_unique_csv_rows(file_path: str, rows, fieldnames, key_fields=None):
     """履歴行を追加し、同じ日時の空欄は取得値で補完する"""
     existing_rows = []
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
         with open(file_path, newline="", encoding="utf-8") as f:
             existing_rows = list(csv.DictReader(f))
-    existing_by_date = {row.get("日時", ""): row for row in existing_rows}
+    key_fields = key_fields or ["日時"]
+    row_key = lambda row: tuple(row.get(field, "") for field in key_fields)
+    existing_by_date = {row_key(row): row for row in existing_rows}
     for row in rows:
-        timestamp = row.get("日時", "")
-        existing = existing_by_date.get(timestamp)
+        key = row_key(row)
+        existing = existing_by_date.get(key)
         if existing is None:
-            existing_by_date[timestamp] = dict(row)
-            existing_rows.append(existing_by_date[timestamp])
+            existing_by_date[key] = dict(row)
+            existing_rows.append(existing_by_date[key])
             continue
         for key, value in row.items():
             if value not in (None, "") and existing.get(key, "") in (None, ""):
@@ -356,6 +381,7 @@ def build_sector_rows():
             latest, prev, five_day_close, month_close, quarter_close = fetch_sector_change(ticker)
             if latest is None:
                 rows.append({"name": name, "close": "データ取得失敗", "cells": [("-", None)] * 4}, )
+                raw_results[name] = None
                 continue
             daily_pct = compute_pct(latest, prev)
             detail_results.append({
@@ -391,6 +417,7 @@ def build_sector_rows():
                 raw_results[name] = round(daily_pct, 2)
         except Exception as e:
             rows.append({"name": name, "close": "エラー", "cells": [("-", None)] * 4, "_sort": float("-inf")})
+            raw_results[name] = None
             print(f"[警告] {name} の取得でエラー: {e}")
 
     # 前日比が大きい順にソート(業種の強弱が一目でわかるように)
@@ -680,6 +707,16 @@ def main():
     stock_index_rows = japan_index_rows + us_index_rows
     sector_rows, sector_results, sector_detail_results = build_sector_rows()
 
+    successful_market_values = sum(value is not None for value in {
+        **macro_results,
+        **japan_index_results,
+        **us_index_results,
+    }.values())
+    successful_sector_values = sum(value is not None for value in sector_results.values())
+    if successful_market_values == 0 and successful_sector_values == 0:
+        print("[エラー] 市場指標とセクター指標を取得できなかったため、既存CSVを保持します。", file=sys.stderr)
+        return 1
+
     print_console_table("マクロ指標", macro_rows)
     print_console_table("株価指数(日本+米国)", stock_index_rows)
     print_console_table("TOPIX-17 業種騰落率", sector_rows)
@@ -700,16 +737,29 @@ def main():
         *US_INDEX_INSTRUMENTS.keys(),
     ]
     historical_rows_by_date = {}
+    historical_ohlc_rows = []
     for instruments in (MACRO_INSTRUMENTS, JAPAN_INDEX_INSTRUMENTS, US_INDEX_INSTRUMENTS):
         for history_row in build_market_history_rows(instruments, today):
             historical_rows_by_date.setdefault(history_row["日時"], {"日時": history_row["日時"]})
             historical_rows_by_date[history_row["日時"]].update(history_row)
+        for name, metadata in instruments.items():
+            historical_ohlc_rows.extend(fetch_historical_ohlc(
+                metadata["ticker"], name,
+                (datetime.fromisoformat(today).date() - timedelta(days=90)).isoformat(),
+                (datetime.fromisoformat(today).date() - timedelta(days=1)).isoformat(),
+            ))
     append_unique_csv_rows(
         MARKET_LOG_FILE,
         [historical_rows_by_date[key] for key in sorted(historical_rows_by_date)],
         fieldnames=market_fieldnames,
     )
     append_csv_row(MARKET_LOG_FILE, combined_market_results, fieldnames=market_fieldnames)
+    append_unique_csv_rows(
+        MARKET_OHLC_FILE,
+        historical_ohlc_rows,
+        fieldnames=["日時", "指標", "始値", "高値", "安値", "終値"],
+        key_fields=["日時", "指標"],
+    )
     append_csv_row(SECTOR_LOG_FILE, sector_results_with_date)
     for detail_row in sector_detail_results:
         append_csv_row(SECTOR_DETAIL_LOG_FILE, detail_row)
@@ -718,7 +768,7 @@ def main():
 
     if DASHBOARD_URL:
         send_dashboard_update()
-        return
+        return 0
 
     # ローカル実行時は従来通り画像テーブルを生成してDiscordに送信
     macro_image = render_table_image(
@@ -744,7 +794,8 @@ def main():
             (sector_image, "TOPIX-17 業種騰落率"),
         ],
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

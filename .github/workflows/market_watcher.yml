@@ -46,7 +46,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add market_log.csv sector_log_jp.csv sector_detail_log_jp.csv
+          git add market_log.csv market_ohlc.csv sector_log_jp.csv sector_detail_log_jp.csv
           if ! git diff --staged --quiet; then
             git commit -m "Update market logs $(date +'%Y-%m-%d')"
             pushed=false
@@ -70,7 +70,7 @@ jobs:
         run: |
           rm -rf _site
           mkdir _site
-          cp index.html market_log.csv sector_log_jp.csv sector_detail_log_jp.csv _site/
+          cp index.html market_log.csv market_ohlc.csv sector_log_jp.csv sector_detail_log_jp.csv _site/
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
