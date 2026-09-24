@@ -152,7 +152,8 @@ def historical_close_on_or_before(closes, latest_time, days_ago: int):
 
 def fetch_latest(ticker: str, use_24h: bool = False):
     """直近値、比較値、5営業日前、約1か月前、約3か月前の終値を取得"""
-    data = yf.Ticker(ticker).history(period="180d", interval="1d", auto_adjust=False)
+    instrument = yf.Ticker(ticker)
+    data = instrument.history(period="180d", interval="1d", auto_adjust=False)
     closes = data["Close"].dropna() if not data.empty else None
     if closes is None or closes.empty:
         return None, None, None, None, None
@@ -164,7 +165,7 @@ def fetch_latest(ticker: str, use_24h: bool = False):
     quarter_close = historical_close_on_or_before(closes, latest_time, 90)
 
     if use_24h:
-        intraday = yf.Ticker(ticker).history(
+        intraday = instrument.history(
             period="5d", interval="1h", auto_adjust=False
         )
         intraday_closes = intraday["Close"].dropna() if not intraday.empty else None
@@ -181,9 +182,10 @@ def fetch_latest(ticker: str, use_24h: bool = False):
     return latest_close, prev_close, five_day_close, month_close, quarter_close
 
 
-def fetch_historical_closes(ticker: str, start_date: str, end_date: str):
+def fetch_historical_closes(ticker: str, start_date: str, end_date: str, data=None):
     """指定期間の日次終値を、ダッシュボードの履歴補完用に取得"""
-    data = yf.Ticker(ticker).history(period="180d", interval="1d", auto_adjust=False)
+    if data is None:
+        data = yf.Ticker(ticker).history(period="180d", interval="1d", auto_adjust=False)
     closes = data["Close"].dropna() if not data.empty else None
     if closes is None or closes.empty:
         return {}
@@ -195,9 +197,10 @@ def fetch_historical_closes(ticker: str, start_date: str, end_date: str):
     }
 
 
-def fetch_historical_ohlc(ticker: str, indicator: str, start_date: str, end_date: str):
+def fetch_historical_ohlc(ticker: str, indicator: str, start_date: str, end_date: str, data=None):
     """指定期間の日次OHLCを、ろうそく足表示用に取得"""
-    data = yf.Ticker(ticker).history(period="180d", interval="1d", auto_adjust=False)
+    if data is None:
+        data = yf.Ticker(ticker).history(period="180d", interval="1d", auto_adjust=False)
     if data.empty:
         return []
     result = []
@@ -215,6 +218,32 @@ def fetch_historical_ohlc(ticker: str, indicator: str, start_date: str, end_date
             "終値": round(float(values[3]), 4),
         })
     return result
+
+
+def build_market_history_and_ohlc_rows(instruments: dict, latest_date: str):
+    """同じ日次履歴から市場履歴行とOHLC行を作成し、取得回数を抑える。"""
+    latest_day = datetime.fromisoformat(latest_date).date()
+    start_date = (latest_day - timedelta(days=90)).isoformat()
+    end_date = (latest_day - timedelta(days=1)).isoformat()
+    rows = {}
+    ohlc_rows = []
+
+    for name, metadata in instruments.items():
+        data = yf.Ticker(metadata["ticker"]).history(
+            period="180d", interval="1d", auto_adjust=False
+        )
+        historical = fetch_historical_closes(
+            metadata["ticker"], start_date, end_date, data=data
+        )
+        for target_date, value in historical.items():
+            if target_date not in rows:
+                rows[target_date] = {"日時": f"{target_date} 00:00"}
+            rows[target_date][name] = value
+        ohlc_rows.extend(fetch_historical_ohlc(
+            metadata["ticker"], name, start_date, end_date, data=data
+        ))
+
+    return [rows[target_date] for target_date in sorted(rows)], ohlc_rows
 
 
 def build_market_history_rows(instruments: dict, latest_date: str):
@@ -356,11 +385,11 @@ def build_market_rows(instruments: dict):
             close_str = format_value(latest, metadata["unit"], metadata["decimals"])
             mode = metadata["change_mode"]
             decimals = metadata["decimals"]
+            references = (prev, five_day_close, month_close, quarter_close)
+            changes = [compute_pct(latest, reference) for reference in references]
             cells = [
-                (format_change_display(latest, prev, decimals, mode), compute_pct(latest, prev)),
-                (format_change_display(latest, five_day_close, decimals, mode), compute_pct(latest, five_day_close)),
-                (format_change_display(latest, month_close, decimals, mode), compute_pct(latest, month_close)),
-                (format_change_display(latest, quarter_close, decimals, mode), compute_pct(latest, quarter_close)),
+                (format_change_display(latest, reference, decimals, mode), change)
+                for reference, change in zip(references, changes)
             ]
             rows.append({"name": name, "close": close_str, "cells": cells})
             raw_results[name] = round(latest, 4)
@@ -384,32 +413,38 @@ def build_sector_rows():
                 raw_results[name] = None
                 continue
             daily_pct = compute_pct(latest, prev)
+            period_pcts = [
+                daily_pct,
+                compute_pct(latest, five_day_close),
+                compute_pct(latest, month_close),
+                compute_pct(latest, quarter_close),
+            ]
             detail_results.append({
                 "日時": None,
                 "業種": name,
                 "終値": round(latest, 1),
                 "1D": round(daily_pct, 2) if daily_pct is not None else None,
-                "1W": round(compute_pct(latest, five_day_close), 2) if five_day_close else None,
-                "1M": round(compute_pct(latest, month_close), 2) if month_close else None,
-                "3M": round(compute_pct(latest, quarter_close), 2) if quarter_close else None,
+                "1W": round(period_pcts[1], 2) if five_day_close else None,
+                "1M": round(period_pcts[2], 2) if month_close else None,
+                "3M": round(period_pcts[3], 2) if quarter_close else None,
             })
             close_str = f"{latest:,.1f}"
             cells = [
                 (format_directional_change(daily_pct) if daily_pct is not None else "データ不足", daily_pct),
                 (
-                    format_directional_change(compute_pct(latest, five_day_close))
+                    format_directional_change(period_pcts[1])
                     if five_day_close else "データ不足",
-                    compute_pct(latest, five_day_close),
+                    period_pcts[1],
                 ),
                 (
-                    format_directional_change(compute_pct(latest, month_close))
+                    format_directional_change(period_pcts[2])
                     if month_close else "データ不足",
-                    compute_pct(latest, month_close),
+                    period_pcts[2],
                 ),
                 (
-                    format_directional_change(compute_pct(latest, quarter_close))
+                    format_directional_change(period_pcts[3])
                     if quarter_close else "データ不足",
-                    compute_pct(latest, quarter_close),
+                    period_pcts[3],
                 ),
             ]
             rows.append({"name": name, "close": close_str, "cells": cells, "_sort": daily_pct})
@@ -739,15 +774,11 @@ def main():
     historical_rows_by_date = {}
     historical_ohlc_rows = []
     for instruments in (MACRO_INSTRUMENTS, JAPAN_INDEX_INSTRUMENTS, US_INDEX_INSTRUMENTS):
-        for history_row in build_market_history_rows(instruments, today):
+        history_rows, ohlc_rows = build_market_history_and_ohlc_rows(instruments, today)
+        for history_row in history_rows:
             historical_rows_by_date.setdefault(history_row["日時"], {"日時": history_row["日時"]})
             historical_rows_by_date[history_row["日時"]].update(history_row)
-        for name, metadata in instruments.items():
-            historical_ohlc_rows.extend(fetch_historical_ohlc(
-                metadata["ticker"], name,
-                (datetime.fromisoformat(today).date() - timedelta(days=90)).isoformat(),
-                (datetime.fromisoformat(today).date() - timedelta(days=1)).isoformat(),
-            ))
+        historical_ohlc_rows.extend(ohlc_rows)
     append_unique_csv_rows(
         MARKET_LOG_FILE,
         [historical_rows_by_date[key] for key in sorted(historical_rows_by_date)],
